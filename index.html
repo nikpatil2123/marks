@@ -152,6 +152,52 @@
     .search-bar-wrap {
       max-width: 580px; margin: 0 auto 2rem; position: relative;
     }
+
+    .program-filters {
+      max-width: 860px;
+      margin: 0 auto 1.25rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      justify-content: center;
+    }
+    .program-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--ink2);
+      border-radius: 999px;
+      padding: .4rem .85rem;
+      font-size: .74rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .15s, border-color .15s, background .15s, color .15s;
+      box-shadow: var(--shadow);
+      font-family: 'Outfit', sans-serif;
+    }
+    .program-chip:hover {
+      transform: translateY(-1px);
+      border-color: var(--gold);
+      color: var(--ink);
+    }
+    .program-chip.active {
+      background: linear-gradient(135deg, var(--gold), #e8b04a);
+      border-color: transparent;
+      color: #fff;
+    }
+    .program-chip-count {
+      font-size: .65rem;
+      font-weight: 800;
+      padding: .1rem .45rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,.18);
+    }
+    .program-chip:not(.active) .program-chip-count {
+      background: var(--gold-l);
+      color: var(--gold);
+    }
     .search-bar-inner {
       display: flex; align-items: center; gap: .5rem;
       background: var(--surface);
@@ -293,6 +339,8 @@
     }
     .rec-link:hover { background:#d0eeeb; }
 
+    
+
     @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
     @media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.chart-grid{grid-template-columns:1fr}.chart-grid-3{grid-template-columns:1fr 1fr}.summary-grid{grid-template-columns:repeat(3,1fr)}}
     @media(max-width:768px){.sidebar{display:none}.view,.view.active{padding:1.5rem 1rem 3rem}.kpi-grid{grid-template-columns:repeat(2,1fr)}.chart-grid-3{grid-template-columns:1fr}.summary-grid{grid-template-columns:repeat(2,1fr)}}
@@ -425,6 +473,9 @@
       </div>
     </div>
 
+    <!-- Program filters -->
+    <div id="programFilters" class="program-filters"></div>
+
     <!-- Search bar -->
     <div class="search-bar-wrap">
       <div class="search-bar-inner">
@@ -457,20 +508,138 @@ function showView(name) {
 // ── SEARCH ────────────────────────────────────────────────────────
 let hiIdx = -1, currentSugs = [];
 
-const input   = document.getElementById('nameSearch');
-const sugsEl  = document.getElementById('suggestions');
-const resultEl= document.getElementById('searchResult');
+const input          = document.getElementById('nameSearch');
+const sugsEl         = document.getElementById('suggestions');
+const resultEl       = document.getElementById('searchResult');
+const programFiltersEl = document.getElementById('programFilters');
 
-// Build name map
+// Build name map (column B only — names[0], split on comma to handle merged cells)
 const nameMap = {};
 ALL_DATA.forEach(rec => {
-  rec.names.forEach(name => {
-    const key = name.trim().toLowerCase();
-    if (!nameMap[key]) nameMap[key] = { display: name.trim(), records: [] };
-    nameMap[key].records.push(rec);
-  });
+  if (rec.names && rec.names.length > 0) {
+    // Use only the first name before any comma (column B value)
+    const name = rec.names[0].split(',')[0].trim();
+    const key = name.toLowerCase();
+    if (!nameMap[key]) nameMap[key] = { display: name, records: [] };
+    // Deduplicate by sheetName+subject — same faculty, same sheet, same subject = one entry
+    if (!nameMap[key].records.some(r => r.sheetName === rec.sheetName && r.subject === rec.subject)) {
+      nameMap[key].records.push(rec);
+    }
+  }
 });
 const allNames = Object.keys(nameMap).sort();
+
+function buildProgramMatches(programName) {
+  const needle = programName.trim().toLowerCase();
+  const srnoSet = new Set();
+
+  ALL_DATA.forEach(rec => {
+    const tokens = [rec.sheetLabel, rec.subject, rec.docName, ...(rec.names || [])].map(v => String(v || '').toLowerCase());
+    if (tokens.some(v => v.includes(needle))) {
+      srnoSet.add(rec.srno);
+    }
+  });
+
+  if (srnoSet.size) {
+    return ALL_DATA.filter(rec => srnoSet.has(rec.srno));
+  }
+
+  return ALL_DATA.filter(rec => {
+    const tokens = [rec.sheetLabel, rec.subject, rec.docName].map(v => String(v || '').toLowerCase());
+    return tokens.some(v => v.includes(needle));
+  });
+}
+
+function buildProgramPeople(programName) {
+  const matches = buildProgramMatches(programName);
+  const people = new Map();
+
+  matches.forEach(rec => {
+    rec.names.forEach(name => {
+      const display = name.trim();
+      const key = display.toLowerCase();
+      if (!people.has(key)) {
+        people.set(key, { display, records: [] });
+      }
+      people.get(key).records.push(rec);
+    });
+  });
+
+  return { matches, people: [...people.values()].sort((a, b) => a.display.localeCompare(b.display)) };
+}
+
+function renderProgramFilters(activeProgram = '') {
+  if (!programFiltersEl) return;
+
+  programFiltersEl.innerHTML = progs.map(p =>
+    '<button type="button" class="program-chip' + (activeProgram === p.n ? ' active' : '') + '" onclick="selectProgram(\'' + escJs(p.n) + '\')">' +
+      '<span>' + escHtml(p.n) + '</span>' +
+      '<span class="program-chip-count">' + p.c + '</span>' +
+    '</button>'
+  ).join('');
+}
+
+function renderProgramResult(programName) {
+  const { matches, people } = buildProgramPeople(programName);
+
+  if (!people.length) {
+    resultEl.innerHTML = '<div class="result-header"><div class="result-avatar">?</div><div><div class="result-name">' + escHtml(programName) + '</div><div class="result-meta"><span>No people found in this program</span></div></div></div>';
+    resultEl.className = 'open';
+    return;
+  }
+
+  const initials = programName.split(/\s+/).filter(Boolean).map(w => w[0] || '').join('').slice(0, 2).toUpperCase() || programName[0].toUpperCase();
+  const totalMarks = [...new Set(matches.map(r => r.sheetName))].reduce((sum, sheetName) => {
+    const match = matches.find(r => r.sheetName === sheetName);
+    return sum + (match ? match.marksEach : 0);
+  }, 0);
+
+  let html = '<div class="result-header">' +
+    '<div class="result-avatar">' + initials + '</div>' +
+    '<div>' +
+    '<div class="result-name">' + escHtml(programName) + '</div>' +
+    '<div class="result-meta">' +
+    '<span>👤 <b>' + people.length + '</b> people</span>' +
+    '<span>📜 <b>' + matches.length + '</b> certificate' + (matches.length !== 1 ? 's' : '') + '</span>' +
+    '<span>🏆 <b>' + totalMarks + '</b> total marks</span>' +
+    '</div>' +
+    '</div></div>';
+
+  html += '<div class="summary-grid">' +
+    '<div class="sum-box"><div class="sum-val" style="color:var(--gold)">' + people.length + '</div><div class="sum-lbl">People</div></div>' +
+    '<div class="sum-box"><div class="sum-val" style="color:var(--teal)">' + matches.length + '</div><div class="sum-lbl">Certificates</div></div>' +
+    '<div class="sum-box"><div class="sum-val" style="color:var(--blue)">' + totalMarks + '</div><div class="sum-lbl">Marks</div></div>' +
+    '</div>';
+
+  html += '<div class="rec-list">';
+  people.forEach(person => {
+    const personMarks = [...new Set(person.records.map(r => r.sheetName))].reduce((sum, sheetName) => {
+      const match = person.records.find(r => r.sheetName === sheetName);
+      return sum + (match ? match.marksEach : 0);
+    }, 0);
+    const personInitials = person.display.split(/\s+/).filter(Boolean).map(w => w[0] || '').join('').slice(0, 2).toUpperCase() || person.display[0].toUpperCase();
+
+    html += '<div class="rec-card">' +
+      '<div class="rec-badge rb-1">' + personInitials + '</div>' +
+      '<div class="rec-body">' +
+      '<div class="rec-subject">' + escHtml(person.display) + '</div>' +
+      '<div class="rec-co">' + person.records.length + ' certificate' + (person.records.length !== 1 ? 's' : '') + ' · ' + [...new Set(person.records.map(r => r.sheetLabel))].join(', ') + '</div>' +
+      '<div class="rec-foot"><span class="rec-srno">' + escHtml(programName) + '</span><span class="rec-marks-badge">🏆 ' + personMarks + ' marks</span></div>' +
+      '</div>' +
+      '</div>';
+  });
+  html += '</div>';
+
+  resultEl.innerHTML = html;
+  resultEl.className = 'open';
+}
+
+function selectProgram(programName) {
+  input.value = '';
+  closeSugs();
+  renderProgramFilters(programName);
+  renderProgramResult(programName);
+}
 
 input.addEventListener('input', () => {
   const q = input.value.trim().toLowerCase();
@@ -528,6 +697,7 @@ function clearSearch() {
   closeSugs();
   resultEl.className = '';
   resultEl.innerHTML = '';
+  renderProgramFilters('');
 }
 
 function renderResult(d) {
@@ -581,10 +751,14 @@ function renderResult(d) {
       '<div class="rec-badge ' + badgeCls + '">' + rec.sheetLabel.replace('Sheet ','S') + '</div>' +
       '<div class="rec-body">' +
       '<div class="rec-subject" title="' + escHtml(rec.subject) + '">' + escHtml(rec.subject) + '</div>' +
-      '<div class="rec-co" style="margin-top:3px;">' + rec.names.map(n=>'<span>'+escHtml(n)+'</span>').join('') + '</div>' +
+      '<div style="display:flex;align-items:center;gap:.5rem;margin-top:3px;">' +
+      '<span class="rec-srno" style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:.05rem .4rem;flex-shrink:0;">' + escHtml(rec.srno) + '</span>' +
+      '<span class="rec-co">' + (rec.names && rec.names[0] ? escHtml(rec.names[0]) : 'N/A') + '</span>' +
+      '</div>' +
       '</div>' +
       '<div class="rec-right">' +
       '<span class="rec-marks-badge">🏆 ' + rec.marksEach + ' marks</span>' +
+      (rec.link ? '<a class="rec-link" href="' + escHtml(rec.link) + '" target="_blank" rel="noopener">📄 View</a>' : '') +
       '</div></div>';
   });
   html += '</div>';
@@ -619,10 +793,11 @@ new Chart(document.getElementById('donutChart'),{
   options:{responsive:true,maintainAspectRatio:false,cutout:'75%',plugins:{legend:{display:false}}}
 });
 
-const progs=[{n:'PPI',c:3},{n:'PHARMACY',c:2},{n:'BCA',c:4},{n:'PIET DS',c:4},{n:'ARTS',c:1},{n:'COA',c:1},{n:'Orange',c:1},{n:'PIET',c:1},{n:'PIPHS',c:1},{n:'PISW',c:1},{n:'PIT',c:1}];
+const progs=[{n:'PHARMACY',c:4},{n:'BBA',c:3},{n:'PIET DS',c:3},{n:'PPI',c:3},{n:'PIET',c:2},{n:'PISW',c:2},{n:'PIT',c:2},{n:'COA',c:2},{n:'ARTS',c:2},{n:'PIPHS',c:2},{n:'BCA',c:2},{n:'COMMERCE',c:1},{n:'PIHMCT',c:1},{n:'LAW',c:1},{n:'PIAS',c:1},{n:'ORANGE',c:1}];
 const maxP=Math.max(...progs.map(p=>p.c));
 const pl=document.getElementById('progList');
-progs.slice(0,6).forEach(p=>{pl.innerHTML+=`<div class="prog-item"><div class="prog-meta"><span class="prog-name">${p.n}</span><span class="prog-count">${p.c}</span></div><div class="prog-bar-track"><div class="prog-bar-fill" style="width:${(p.c/maxP*100).toFixed(1)}%"></div></div></div>`;});
+progs.slice(0,6).forEach(p=>{pl.innerHTML+=`<div class="prog-item"><div class="prog-meta"><span class="prog-name">${p.n}</span><span class="prog-count">${p.c}</span></div><div class="prog-bar-track"><div class="prog-bar-fill" style="width:${(p.c/maxP*100).toFixed(1)}%"></div></div></div>`;})
+renderProgramFilters('');
 
 new Chart(document.getElementById('progChart'),{
   type:'bar',
