@@ -8,6 +8,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 19px; }
     :root {
       --bg:#faf8f5; --surface:#fff; --ink:#1a1612; --ink2:#6b6460;
       --border:#e8e2db; --gold:#c8952a; --gold-l:#fdf4e3;
@@ -110,8 +111,19 @@
     #view-search {
       padding: 2.5rem 2rem 4rem;
       display: none;
+      text-align: center;
     }
     #view-search.active { display: block; }
+    #view-search > * {
+      width: 100%;
+      max-width: 860px;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: left;
+    }
+    #view-search > .search-hero { text-align: center; }
+    #view-search > .mark-legend,
+    #view-search > .program-filters { justify-content: center; }
 
     .search-hero {
       text-align: center;
@@ -119,11 +131,11 @@
     }
     .search-hero h2 {
       font-family: 'Instrument Serif', serif;
-      font-size: 1.8rem; font-weight: 400;
+      font-size: 3rem; font-weight: 400;
       color: var(--ink); letter-spacing: -.02em;
     }
     .search-hero h2 em { color: var(--gold); font-style: italic; }
-    .search-hero p { font-size: .82rem; color: var(--ink2); margin-top: .4rem; }
+    .search-hero p { font-size: 1.15rem; color: var(--ink2); margin-top: .6rem; }
 
     /* Mark legend */
     .mark-legend {
@@ -554,6 +566,17 @@ ALL_DATA.forEach(rec => {
   });
 });
 const allNames = Object.keys(nameMap).sort();
+const SHEET_MARKS = { '1': 9, '2': 8, '3': 9 };
+const MAX_TOTAL_MARKS = 18;
+
+function getSheetMarks(sheetName) {
+  return SHEET_MARKS[sheetName] || 0;
+}
+
+function getCappedMarks(records) {
+  const rawTotal = records.reduce((sum, rec) => sum + getSheetMarks(rec.sheetName), 0);
+  return Math.min(rawTotal, MAX_TOTAL_MARKS);
+}
 
 function buildProgramMatches(programName) {
   const needle = programName.trim().toLowerCase();
@@ -615,10 +638,7 @@ function renderProgramResult(programName) {
   }
 
   const initials = programName.split(/\s+/).filter(Boolean).map(w => w[0] || '').join('').slice(0, 2).toUpperCase() || programName[0].toUpperCase();
-  const totalMarks = [...new Set(matches.map(r => r.sheetName))].reduce((sum, sheetName) => {
-    const match = matches.find(r => r.sheetName === sheetName);
-    return sum + (match ? match.marksEach : 0);
-  }, 0);
+  const totalMarks = getCappedMarks(matches);
 
   let html = '<div class="result-header">' +
     '<div class="result-avatar">' + initials + '</div>' +
@@ -639,10 +659,7 @@ function renderProgramResult(programName) {
 
   html += '<div class="rec-list">';
   people.forEach(person => {
-    const personMarks = [...new Set(person.records.map(r => r.sheetName))].reduce((sum, sheetName) => {
-      const match = person.records.find(r => r.sheetName === sheetName);
-      return sum + (match ? match.marksEach : 0);
-    }, 0);
+    const personMarks = getCappedMarks(person.records);
     const personInitials = person.display.split(/\s+/).filter(Boolean).map(w => w[0] || '').join('').slice(0, 2).toUpperCase() || person.display[0].toUpperCase();
 
     html += '<div class="rec-card">' +
@@ -679,7 +696,7 @@ input.addEventListener('input', () => {
   const re = new RegExp('(' + escRe(q) + ')', 'gi');
   sugsEl.innerHTML = currentSugs.map(key => {
     const d = nameMap[key];
-    const totalMarks = (()=>{const seen=new Set();let t=0;d.records.forEach(r=>{if(!seen.has(r.sheetName)){seen.add(r.sheetName);t+=r.marksEach;}});return t;})();
+    const totalMarks = getCappedMarks(d.records);
     const initials = d.display.split(/\s+/).filter(w=>!['mr','mrs','ms','dr','prof','er','ca','cs'].includes(w.replace(/\\.$/,'').toLowerCase())).map(w=>w[0]||'').join('').slice(0,2).toUpperCase()||d.display[0].toUpperCase();
     const sheets = [...new Set(d.records.map(r => r.sheetLabel))].join(', ');
     const highlighted = escHtml(d.display).replace(re, '<mark>$1</mark>');
@@ -735,15 +752,13 @@ function renderResult(d) {
   const bySheet = {};
   recs.forEach(r => {
     if (!bySheet[r.sheetName]) {
-    const marksMap = {'1':9,'2':4,'3':3};
-    const sheetMarks = marksMap[r.sheetName] || r.marksEach;
-    bySheet[r.sheetName] = { label:r.sheetLabel, count:0, marks:sheetMarks, marksEach:sheetMarks };
-  }
+      const sheetMarks = getSheetMarks(r.sheetName);
+      bySheet[r.sheetName] = { label:r.sheetLabel, count:0, marks:sheetMarks };
+    }
     bySheet[r.sheetName].count++;
-    // marks stay fixed at the sheet value — NOT multiplied per cert
   });
-  // Correct total: one mark value per unique sheet
-  const totalMarks = Object.values(bySheet).reduce((s, info) => s + info.marks, 0);
+  // Correct total: every certificate contributes sheet marks, capped at 18.
+  const totalMarks = getCappedMarks(recs);
 
   let html = '<div class="result-header">' +
     '<div class="result-avatar">' + initials + '</div>' +
@@ -768,7 +783,7 @@ function renderResult(d) {
     const cls = pillCls[sn] || 'sp-1';
     html += '<span class="sheet-pill ' + cls + '">' +
       info.label + ': ' + info.count + ' cert' + (info.count!==1?'s':'') +
-      ' × ' + info.marksEach + ' marks = <b>' + info.marks + ' marks</b>' +
+      ' × ' + info.marks + ' marks = <b>' + (info.count * info.marks) + ' raw marks</b>' +
       '</span>';
   });
   html += '</div>';
@@ -789,7 +804,7 @@ function renderResult(d) {
       '</div>' +
       '</div>' +
       '<div class="rec-right">' +
-      '<span class="rec-marks-badge">🏆 ' + rec.marksEach + ' marks</span>' +
+      '<span class="rec-marks-badge">🏆 ' + getSheetMarks(rec.sheetName) + ' marks</span>' +
       (rec.link ? '<a class="rec-link" href="' + escHtml(rec.link) + '" target="_blank" rel="noopener">📄 View</a>' : '') +
       '</div></div>';
   });
