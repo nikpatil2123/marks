@@ -96,9 +96,33 @@ for row in ws.iter_rows(min_row=2, values_only=True):
         "ok": is_ok(status),
     })
 
+# ── Sheet 4: 4 names ─────────────────────────────────────────────
+ws = wb['4']
+for row in ws.iter_rows(min_row=2, values_only=True):
+    row = (list(row) + [None]*12)[:12]
+    program, name1, name2, name3, name4, subject, srno, date, doc_id, url, hyperlink, status = row
+    if not srno and not name1:
+        continue
+    names = [s(n) for n in [name1, name2, name3, name4] if n and s(n)]
+    doc_name = "-".join(names) + (f"-{s(subject)}" if subject else "")
+    all_data.append({
+        "sheetName": "4",
+        "sheetLabel": "Sheet 4",
+        "marksEach": 2,
+        "programName": s(program),
+        "srno": s(srno),
+        "names": names,
+        "subject": s(subject),
+        "date": fmt_date(date),
+        "docName": doc_name,
+        "link": s(url),
+        "ok": is_ok(status),
+    })
+
 print(f"Loaded: Sheet 1={sum(1 for d in all_data if d['sheetName']=='1')}, "
       f"Sheet 2={sum(1 for d in all_data if d['sheetName']=='2')}, "
       f"Sheet 3={sum(1 for d in all_data if d['sheetName']=='3')}, "
+      f"Sheet 4={sum(1 for d in all_data if d['sheetName']=='4')}, "
       f"Total={len(all_data)}")
 
 # ── Patch index.html ─────────────────────────────────────────────
