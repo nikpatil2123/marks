@@ -1204,12 +1204,7 @@
           <div class="kpi-label">Total Certificates</div>
           <div class="kpi-sub"><span class="up">↑</span> Across all 3 sheets</div>
         </div>
-        <div class="kpi teal">
-          <div class="kpi-icon">✅</div>
-          <div class="kpi-val" id="kpiSuccess">0</div>
-          <div class="kpi-label">Successfully Created</div>
-          <div class="kpi-sub"><span class="up" id="kpiSuccessRate">99.8%</span> success rate</div>
-        </div>
+
         <div class="kpi blue">
           <div class="kpi-icon">👨‍🏫</div>
           <div class="kpi-val" id="kpiNames">0</div>
@@ -1705,7 +1700,7 @@
 
     // ── UPDATE DOM ────────────────────────────────────────────────────
 
-    document.getElementById('kpiSuccessRate').textContent = successPct;
+
     document.getElementById('kpiNames').textContent = uniqueNames;
     document.getElementById('kpiProgs').textContent = uniqueProgs;
     document.getElementById('donutTotal').textContent = total;
@@ -1773,7 +1768,7 @@
     // Animate KPIs
     function animCount(el, t, dur = 1200) { let st = null; function s(ts) { if (!st) st = ts; const p = Math.min((ts - st) / dur, 1); el.textContent = Math.floor(p * t); if (p < 1) requestAnimationFrame(s); else el.textContent = t; } requestAnimationFrame(s); }
     animCount(document.getElementById('kpiTotal'), total);
-    animCount(document.getElementById('kpiSuccess'), successCount);
+
   </script>
 </body>
 
